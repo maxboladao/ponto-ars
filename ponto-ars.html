@@ -366,7 +366,7 @@ var bloq=(tipo==='sabF'||tipo==='ferias'||tipo==='domingo');
 if(!bloq){if(!reg.entrada)setPulse('btn-entrada');else if(!reg.almIni&&tipo==='util')setPulse('btn-almIni');else if(reg.almIni&&!reg.almFim&&tipo==='util')setPulse('btn-almFim');else if(!reg.saida)setPulse('btn-saida')}
 setDisp('d-entrada','b-entrada',reg.entrada,function(){var diff=pMin(CFG.ent)-pMin(reg.entrada);return{txt:diff>0?'+'+diff+'min':diff<0?'-'+Math.abs(diff)+'min':'exato',cls:diff>=0?'gb-ok':'gb-warn'}});
 setDisp('d-almIni','b-almIni',reg.almIni,function(){return{txt:reg.almIni,cls:'gb-ok'}});
-setDisp('d-almFim','b-almFim',reg.almFim,function(){if(!reg.almIni)return{txt:'\u2014',cls:'gb-pend'};var d=pMin(reg.almFim)-pMin(reg.almIni)-CFG.alm;return{txt:d>0?'+'+d+'min':d<0?d+'min':'exato',cls:d<=0?'gb-ok':'gb-warn'}});
+setDisp('d-almFim','b-almFim',reg.almFim,function(){if(!reg.almIni)return{txt:'\u2014',cls:'gb-pend'};var d=pMin(reg.almFim)-pMin(reg.almIni)-CFG.alm;return{txt:d>0?'-'+d+'min':d<0?'+'+Math.abs(d)+'min':'exato',cls:d<=0?'gb-ok':'gb-warn'}});
 setDisp('d-saida','b-saida',reg.saida,function(){var e=calcExtra(reg,tipo);return e!==null?{txt:fmtMin(e),cls:e>=0?'gb-ok':'gb-bad'}:{txt:'\u2014',cls:'gb-pend'}});
 var s=calcSaldo(0),metaMin=CFG.limite*60;
 document.getElementById('hj-ciclo').textContent=labelCiclo(s.ini);
