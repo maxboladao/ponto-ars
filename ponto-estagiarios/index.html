@@ -137,6 +137,10 @@ h1{font-family:"DM Serif Display",Georgia,serif;font-weight:400;font-size:34px;l
   @keyframes tick{to{stroke-dashoffset:0}}
 }
 
+.btn-perigo{background:#A3301C}
+.btn-apagar{min-height:36px;padding:0 10px;border:1px solid #A3301C;border-radius:8px;background:#fff;color:#A3301C;font-weight:700;font-size:12px}
+.aviso-apg{font-size:14px;color:#5b5b5b;margin:0 0 16px}
+
 @page{size:A4;margin:12mm}
 @media print{
   body{background:#fff;color:#000;padding:0}
@@ -220,6 +224,21 @@ h1{font-family:"DM Serif Display",Georgia,serif;font-weight:400;font-size:34px;l
   </div>
 </div>
 
+<!-- Apagar registro (só no relatório, após o PIN) -->
+<div class="fundo" id="apagar" hidden>
+  <div class="folha-sheet" role="dialog" aria-modal="true" aria-labelledby="apg-titulo">
+    <h2 id="apg-titulo">Apagar registro</h2>
+    <p id="apg-quem" style="margin-bottom:4px"></p>
+    <span class="mono" id="apg-horas" style="display:block;font-size:20px;margin-bottom:8px"></span>
+    <p class="aviso-apg">Não dá para desfazer. Depois de apagar, a pessoa pode registrar de novo.</p>
+    <div class="botoes">
+      <button class="btn-ok btn-perigo" id="apg-dia" type="button"></button>
+      <button class="btn-sec" id="apg-saida" type="button">Apagar só a saída</button>
+      <button class="btn-sec" id="apg-cancelar" type="button">Cancelar</button>
+    </div>
+  </div>
+</div>
+
 <!-- PIN do relatório -->
 <div class="fundo" id="pin-sheet" hidden>
   <div class="folha-sheet" role="dialog" aria-modal="true" aria-labelledby="pin-titulo">
@@ -274,6 +293,7 @@ let db = null, online = false, offset = 0;
 let pessoa = null, tipoPendente = null, gravando = false, voltaTimer = null;
 let dadosHoje = {}, ouvintes = [], diaAtual = "";
 let ultimoRelatorio = false;
+let relDados = {}, apagando = null;
 
 const agora = () => Date.now() + offset;         // hora corrigida pelo servidor
 const diaDe = ts => fmtDia.format(new Date(ts));
@@ -474,6 +494,8 @@ $("#btn-gerar").onclick = async () => {
   try {
     const snaps = await Promise.all(lista.map(p =>
       db.ref(RAIZ + "/registros/" + p.id).orderByKey().startAt(mes + "-01").endAt(mes + "-" + String(ultimo).padStart(2, "0")).once("value")));
+    relDados = {};
+    lista.forEach((p, i) => { relDados[p.id] = snaps[i].val() || {}; });
     $("#folhas").innerHTML = lista.map((p, i) => folha(p, a, m, ultimo, snaps[i].val() || {})).join("");
     $("#msg-rel").textContent = "";
     $("#btn-imprimir").disabled = false;
@@ -497,14 +519,45 @@ function folha(p, a, m, ultimo, dados) {
       '<td class="dia">' + String(d).padStart(2, "0") + " " + SEMANA[dow] + "</td>" +
       "<td>" + (r.entrada ? hora(r.entrada) : "") + "</td>" +
       "<td>" + (r.saida ? hora(r.saida) : "") + "</td>" +
-      "<td>" + t + "</td></tr>";
+      "<td>" + t + "</td>" +
+      '<td class="nao-imprimir">' + ((r.entrada || r.saida) ? '<button type="button" class="btn-apagar" data-p="' + p.id + '" data-dia="' + chave + '">Apagar</button>' : "") + "</td></tr>";
   }
   return '<section class="folha"><h3>Ars Curandi · Registro de jornada de estágio</h3>' +
     '<div class="sub"><b>' + p.nome + "</b> — " + MESES[m - 1] + " de " + a + "</div>" +
-    "<table><thead><tr><th>Dia</th><th>Entrada</th><th>Saída</th><th>Total</th></tr></thead><tbody>" + linhas +
-    '</tbody><tfoot><tr><td class="dia" colspan="3">Total do mês (' + dias + " dias com jornada completa)</td><td>" + durMin(total) + "</td></tr></tfoot></table>" +
+    "<table><thead><tr><th>Dia</th><th>Entrada</th><th>Saída</th><th>Total</th><th class='nao-imprimir'></th></tr></thead><tbody>" + linhas +
+    '</tbody><tfoot><tr><td class="dia" colspan="3">Total do mês (' + dias + " dias com jornada completa)</td><td>" + durMin(total) + '</td><td class="nao-imprimir"></td></tr></tfoot></table>' +
     '<div class="assin"><div>Estagiário</div><div>Responsável</div></div></section>';
 }
+
+$("#folhas").addEventListener("click", e => {
+  const b = e.target.closest(".btn-apagar");
+  if (!b) return;
+  const pe = ESTAGIARIOS.find(x => x.id === b.dataset.p);
+  const dia = b.dataset.dia;
+  const r = (relDados[pe.id] || {})[dia] || {};
+  apagando = { p: pe, dia };
+  const [a, m, d] = dia.split("-");
+  $("#apg-quem").textContent = pe.nome + " — " + d + "/" + m + "/" + a;
+  $("#apg-horas").textContent = "Entrada " + (r.entrada ? hora(r.entrada) : "--:--") + " · Saída " + (r.saida ? hora(r.saida) : "--:--");
+  $("#apg-dia").textContent = (r.entrada && r.saida) ? "Apagar o dia inteiro" : "Apagar este registro";
+  $("#apg-saida").hidden = !(r.entrada && r.saida);
+  $("#apg-dia").disabled = false;
+  $("#apg-saida").disabled = false;
+  $("#apagar").hidden = false;
+});
+$("#apg-cancelar").onclick = () => { $("#apagar").hidden = true; apagando = null; };
+function executarApagar(soSaida) {
+  if (!apagando || !db) return;
+  if (!online) { $("#apagar").hidden = true; apagando = null; $("#msg-rel").textContent = "Sem conexão. Conecte-se para apagar."; return; }
+  const { p, dia } = apagando;
+  $("#apg-dia").disabled = true;
+  $("#apg-saida").disabled = true;
+  db.ref(RAIZ + "/registros/" + p.id + "/" + dia + (soSaida ? "/saida" : "")).remove()
+    .then(() => { $("#apagar").hidden = true; apagando = null; $("#btn-gerar").click(); })
+    .catch(() => { $("#apagar").hidden = true; apagando = null; $("#msg-rel").textContent = "Não foi possível apagar."; });
+}
+$("#apg-dia").onclick = () => executarApagar(false);
+$("#apg-saida").onclick = () => executarApagar(true);
 
 $("#btn-imprimir").onclick = () => {
   const antes = document.title;
